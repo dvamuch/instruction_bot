@@ -12,8 +12,8 @@ class Instructions {
     });
   }
 
-  getInstructionMessage(chatId) {
-    return this.#instructionList[chatId % this.#instructionList.length];
+  getInstructionMessage() {
+    return this.#instructionList[Math.floor(Math.random() * this.#instructionList.length)];
   }
 }
 

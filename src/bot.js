@@ -1,9 +1,13 @@
 const TelegramBot = require("node-telegram-bot-api");
 const Instructions = require("./Instructions");
 const VipInstructions = require("./VipInstructions");
+const {join} = require("path");
 
 class Bot {
   #bot;
+
+  #secondInMilliseconds = 1000;
+  #minuteInMilliseconds = 60 * this.#secondInMilliseconds;
 
   #executeInput = "✅Запустить✅";
   #helpInput = "❓Помощь";
@@ -15,15 +19,18 @@ class Bot {
   #helpAccountUsername = process.env.HELP_ACCOUNT_USERNAME;
   #botUsername = process.env.TG_BOT_USERNAME;
 
-  #helloText = `${this.#projectName} - новейшая платформа, созданная внутри Telegram, для анализа и получения 100% инструкций. Выполнение данных инструкций даст вам гарантированный доход от 5000 рублей в день. 
+  #helloText = `<b>${this.#projectName}</b> - новейшая платформа, созданная внутри Telegram, для анализа и получения 100% инструкций. Выполнение данных инструкций <b>даст вам гарантированный доход от 5000 рублей в день</b>. 
 
-Важно! Перед началом работы следует ознакомиться с видео, нажав на кнопку «Инфо». В случае возникновения вопросов пишите мне по кнопке «Помощь».`;
+<b>Важно!</b> Перед началом работы следует ознакомиться с видео, нажав на кнопку «Инфо». В случае возникновения вопросов пишите мне по кнопке «Помощь».`;
 
   #executeTextStage1 = `⌛️Запущен поиск инструкции...`;
   #executeTextStage2 = `⚙️Анализ полученной информации...`;
   #executeTextStage3 = `♻️Запуск процесса инициализации алгоритма...`;
   #executeTextStage4 = `⚜️Аналитика завершена`;
   #executeTextFinish = `Инструкция найдена ✅`;
+
+  #executeTimeoutText = `❌Бот занят! Попробуйте повторить запрос через 5 минут.`;
+  #executeTimeoutMap = new Set();
 
   #instructions;
   #vipInstructions;
@@ -35,10 +42,12 @@ class Bot {
     },
   };
 
-  #infoText = `Обязательно ознакомьтесь с подробной инструкцией по работе с ботом, посмотрев видео ниже👇🏼👇🏼👇🏼`;
-  #infoVideoTelegramId = "BAACAgIAAxkBAAMeZbTyl8PgOKFIWwNdDnvFhUoAATTJAAIIPgACMbnBSpdIK6YP8XUBNAQ";
+  #infoText = `<b>Обязательно</b> ознакомьтесь с подробной инструкцией по работе с ботом, посмотрев видео ниже👇🏼👇🏼👇🏼`;
+  #infoVideoFileId = null;
+  #infoVideoPath = join(__dirname, "video_instruction.mp4");
+  #infoVideoThumbnailPath = join(__dirname, "thumbnail.png");
 
-  #inviteText1 = `Как это работает?
+  #inviteText1 = `<b>Как это работает?</b>
 
 Вы приглашаете друга, который начинает работать в моëм проекте. Вы скидываете мне скриншоты, подтверждающие, что приглашенный вами друг начал работу и я даю вам код для получения VIP инструкции с помощью которой вы заработаете от 27.000₽.`;
   #inviteUrlText = `Вас приглашают в проект ${this.#projectName}. ⚡️Зарабатывай с нами уже сегодня`;
@@ -50,6 +59,7 @@ class Bot {
     reply_markup: {
       inline_keyboard: [[{text: "Перейти на сайт", url: this.#siteUrl}]],
     },
+    parse_mode: "HTML",
   };
   #cancelVipReplyMarkup = {
     reply_markup: {
@@ -64,6 +74,7 @@ class Bot {
         [{text: "Перейти на сайт", url: this.#siteUrl}],
       ],
     },
+    parse_mode: "HTML",
   };
   #menuReplyMarkup = {
     reply_markup: {
@@ -75,6 +86,7 @@ class Bot {
       resize_keyboard: true,
       is_persistent: true,
     },
+    parse_mode: "HTML",
   };
 
 
@@ -151,19 +163,27 @@ class Bot {
   async #sendExecute(context) {
     const chatId = context.chat.id;
 
+    if (this.#executeTimeoutMap.has(chatId)) {
+      await this.#bot.sendMessage(chatId, this.#executeTimeoutText);
+      return;
+    }
+
+    this.#executeTimeoutMap.add(chatId);
+    setTimeout(() => this.#executeTimeoutMap.delete(chatId), 5 * this.#minuteInMilliseconds);
+
     const {message_id: messageId} = await this.#bot.sendMessage(chatId, this.#executeTextStage1);
 
-    setTimeout(() => this.#editExecuteMessageToStage2(chatId, messageId), 10000);
+    setTimeout(() => this.#editExecuteMessageToStage2(chatId, messageId), 10 * this.#secondInMilliseconds);
   }
 
   async #editExecuteMessageToStage2(chatId, messageId) {
     await this.#bot.editMessageText(this.#executeTextStage2, {chat_id: chatId, message_id: messageId});
-    setTimeout(() => this.#editExecuteMessageToStage3(chatId, messageId), 3000);
+    setTimeout(() => this.#editExecuteMessageToStage3(chatId, messageId), 3 * this.#secondInMilliseconds);
   };
 
   async #editExecuteMessageToStage3(chatId, messageId) {
     await this.#bot.editMessageText(this.#executeTextStage3, {chat_id: chatId, message_id: messageId});
-    setTimeout(() => this.#editExecuteMessageToStage4(chatId, messageId), 3000);
+    setTimeout(() => this.#editExecuteMessageToStage4(chatId, messageId), 3 * this.#secondInMilliseconds);
   };
 
   async #editExecuteMessageToStage4(chatId, messageId) {
@@ -177,12 +197,25 @@ class Bot {
   };
 
   async #sendInstruction(chatId) {
-    await this.#bot.sendMessage(chatId, this.#instructions.getInstructionMessage(chatId), this.#instructionReplyMarkup);
+    await this.#bot.sendMessage(chatId, this.#instructions.getInstructionMessage(), this.#instructionReplyMarkup);
   }
 
   async #sendInfo(context) {
-    await this.#bot.sendMessage(context.chat.id, this.#infoText);
-    await this.#bot.sendVideo(context.chat.id, this.#infoVideoTelegramId);
+    await this.#bot.sendMessage(context.chat.id, this.#infoText, {parse_mode: "HTML"});
+
+
+    if (this.#infoVideoFileId) {
+      await this.#bot.sendVideo(context.chat.id, this.#infoVideoFileId);
+    } else {
+      const message = await this.#bot.sendVideo(context.chat.id, createReadStream(this.#infoVideoPath), {
+        width: 1104,
+        height: 1898,
+        duration: 89,
+        thumb: this.#infoVideoThumbnailPath,
+      });
+      this.#infoVideoFileId = message.video.file_id;
+      console.log(`Закешировал file_id ${this.#infoVideoFileId}`);
+    }
   }
 
   async #sendHelp(context) {
@@ -190,7 +223,7 @@ class Bot {
   }
 
   async #sendInvite(context) {
-    await this.#bot.sendMessage(context.chat.id, this.#inviteText1);
+    await this.#bot.sendMessage(context.chat.id, this.#inviteText1, {parse_mode: "HTML"});
 
     const inviteLink = `t.me/${this.#botUsername}?start=${context.from.id}`;
     const inviteText2 = `Ваша перcональная ссылка для приглашения:
@@ -214,6 +247,7 @@ ${inviteLink}
     const vipInstruction = this.#vipInstructions.getVipInstructionMessage(context.text);
     if (vipInstruction) {
       await this.#bot.sendMessage(context.chat.id, vipInstruction, this.#vipReplyMarkup);
+      this.#isWaitingVipCodeInput[context.chat.id] = false;
     } else {
       await this.#bot.sendMessage(context.chat.id, this.#wrongCipInstructionText, this.#cancelVipReplyMarkup);
     }
