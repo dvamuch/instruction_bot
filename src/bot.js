@@ -2,6 +2,7 @@ const TelegramBot = require("node-telegram-bot-api");
 const Instructions = require("./Instructions");
 const VipInstructions = require("./VipInstructions");
 const {join} = require("path");
+const fs = require("fs");
 
 class Bot {
   #bot;
@@ -29,8 +30,7 @@ class Bot {
   #executeTextStage4 = `⚜️Аналитика завершена`;
   #executeTextFinish = `Инструкция найдена ✅`;
 
-  #executeTimeoutText = `❌Бот занят! Попробуйте повторить запрос через 5 минут.`;
-  #executeTimeoutMap = new Set();
+  #executeTimeoutMap = new Map();
 
   #instructions;
   #vipInstructions;
@@ -164,12 +164,39 @@ class Bot {
     const chatId = context.chat.id;
 
     if (this.#executeTimeoutMap.has(chatId)) {
-      await this.#bot.sendMessage(chatId, this.#executeTimeoutText);
+      const timoutEndDate = this.#executeTimeoutMap.get(chatId);
+      const millisecondsLeft = timoutEndDate.valueOf() - Date.now();
+      const minutesLeft = Math.ceil(millisecondsLeft / this.#minuteInMilliseconds);
+
+      const getEnding = (minutes) => {
+        switch (minutes) {
+          case 1:
+            return "у";
+          case 2:
+            return "ы";
+          case 3:
+            return "ы";
+          case 4:
+            return "ы";
+          case 5:
+            return "";
+          default:
+            return "";
+        }
+      };
+
+      const executeTimeoutText = `❌Алгоритмы обновляются. Попробуйте повторить запрос через ${minutesLeft} минут${getEnding(minutesLeft)}.`;
+      await this.#bot.sendMessage(chatId, executeTimeoutText);
       return;
     }
 
-    this.#executeTimeoutMap.add(chatId);
-    setTimeout(() => this.#executeTimeoutMap.delete(chatId), 5 * this.#minuteInMilliseconds);
+    const timoutInMinutes = 5;
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + timoutInMinutes);
+    this.#executeTimeoutMap.set(chatId, now);
+
+
+    setTimeout(() => this.#executeTimeoutMap.delete(chatId), timoutInMinutes * this.#minuteInMilliseconds);
 
     const {message_id: messageId} = await this.#bot.sendMessage(chatId, this.#executeTextStage1);
 
@@ -207,7 +234,7 @@ class Bot {
     if (this.#infoVideoFileId) {
       await this.#bot.sendVideo(context.chat.id, this.#infoVideoFileId);
     } else {
-      const message = await this.#bot.sendVideo(context.chat.id, createReadStream(this.#infoVideoPath), {
+      const message = await this.#bot.sendVideo(context.chat.id, fs.createReadStream(this.#infoVideoPath), {
         width: 1104,
         height: 1898,
         duration: 89,
@@ -234,8 +261,8 @@ ${inviteLink}
     const inviteTextMarkup = {
       reply_markup: {
         inline_keyboard: [[{
-          text: "✅Нажмите, что бы пригласить друзей",
-          url: `tg://msg_url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(this.#inviteUrlText)}`,
+          text: "✅Нажмите, чтобы пригласить друзей",
+          url: `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(this.#inviteUrlText)}`,
         }]],
       },
     };
